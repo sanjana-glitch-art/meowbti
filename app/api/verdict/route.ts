@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    // No key configured — safe fallback, demo still works
     return NextResponse.json(fallbackFromScores(body.localScores));
   }
 
