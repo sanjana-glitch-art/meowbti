@@ -140,9 +140,11 @@ This project was built with the help of **Claude** (Anthropic) as a coding assis
 
 Documented transparently rather than hidden:
 
+- **Rate limiting is in-memory**, scoped to a single serverless function instance. This is sufficient to prevent casual abuse during judging/demo use, but is not a durable, globally-consistent rate limit across a distributed deployment. A production version would move this to a shared store like Redis.
 - **No user accounts or persistence** - each session is ephemeral; results are not saved server-side. This was an intentional scope decision for the hackathon timeframe.
 - **Gemini verdict length** is prompt-constrained but not hard-capped server-side beyond token limits; the UI truncates visually via CSS as a safety net.
 
 ## Credits
 
 Built by **Sanjana** for The Coding Kitty Hackathon 2026.
+Feedback welcome - see the footer of the live app for contact info.
