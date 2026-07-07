@@ -65,5 +65,3 @@ Documented transparently for completeness:
 - If accounts/persistence are added in the future, ensure photos and cat data are stored with proper access control per user.
 
 ---
-
-*If an Aikido Security scan report is generated for this project, attach it alongside this document in the submission.*
