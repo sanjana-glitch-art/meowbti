@@ -24,6 +24,8 @@ Client-side, `CatIntake.tsx` also validates uploaded files: only image MIME type
 
 `/api/verdict` implements a per-IP rate limit (8 requests per 60 seconds) using the `x-forwarded-for` header (first hop only, correctly parsed from the comma-separated proxy chain) as the client identifier. This mitigates casual abuse and accidental request storms (e.g. a buggy client retry loop) from exhausting the Gemini API quota.
 
+**Known limitation:** this rate limiter is in-memory and scoped to a single serverless function instance, so it is not a strict, globally-consistent limit across a horizontally-scaled deployment. It is documented here rather than hidden - a production hardening pass would move this to a shared store such as Redis.
+
 ## 4. Upstream Request Hardening
 
 The server-side call to the Gemini API is wrapped in an `AbortController` with an 8-second timeout, preventing a slow or hung upstream request from indefinitely occupying server resources. Every failure mode of the upstream call - non-OK HTTP status, missing response text, unparseable JSON, or timeout - is caught and routed to a deterministic fallback rather than surfacing a raw error or stack trace to the client.
@@ -57,8 +59,11 @@ The app does not currently store any personally identifiable information server-
 ## Recommended Future Hardening (Not Implemented - Out of Hackathon Scope)
 
 Documented transparently for completeness:
+- Move rate limiting to a shared store (e.g. Redis) for a durable, cross-instance limit.
 - Add server-side image re-validation (e.g. magic-byte checking) in addition to the client-side MIME type check, since client-side checks can be bypassed by a modified client.
 - Add a Content Security Policy (CSP) header to further reduce any residual injection surface.
 - If accounts/persistence are added in the future, ensure photos and cat data are stored with proper access control per user.
 
 ---
+
+*If an Aikido Security scan report is generated for this project, attach it alongside this document in the submission.*
