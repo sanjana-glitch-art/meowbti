@@ -18,23 +18,23 @@ The `/api/verdict` endpoint validates all incoming request bodies before use:
 - Rejects free-text descriptions shorter than 3 characters (prevents empty/meaningless submissions).
 - Rejects free-text descriptions longer than 1000 characters (prevents excessively large payloads that would waste API tokens/cost, and reduces the surface for pathological inputs reaching the LLM prompt).
 
-Client-side, `CatIntake.tsx` also validates uploaded files: only image MIME types are accepted, and files are capped at 10MB before being processed, in addition to being resized/re-compressed client-side to a max 600px dimension JPEG - reducing the size and type surface of user-supplied binary data before it's ever stored in app state or sent anywhere.
+Client-side, `CatIntake.tsx` also validates uploaded files: only image MIME types are accepted, and files are capped at 10MB before being processed, in addition to being resized/re-compressed client-side to a max 600px dimension JPEG — reducing the size and type surface of user-supplied binary data before it's ever stored in app state or sent anywhere.
 
 ## 3. Rate Limiting
 
 `/api/verdict` implements a per-IP rate limit (8 requests per 60 seconds) using the `x-forwarded-for` header (first hop only, correctly parsed from the comma-separated proxy chain) as the client identifier. This mitigates casual abuse and accidental request storms (e.g. a buggy client retry loop) from exhausting the Gemini API quota.
 
-**Known limitation:** this rate limiter is in-memory and scoped to a single serverless function instance, so it is not a strict, globally-consistent limit across a horizontally-scaled deployment. It is documented here rather than hidden - a production hardening pass would move this to a shared store such as Redis.
+**Known limitation:** this rate limiter is in-memory and scoped to a single serverless function instance, so it is not a strict, globally-consistent limit across a horizontally-scaled deployment. It is documented here rather than hidden — a production hardening pass would move this to a shared store such as Redis.
 
 ## 4. Upstream Request Hardening
 
-The server-side call to the Gemini API is wrapped in an `AbortController` with an 8-second timeout, preventing a slow or hung upstream request from indefinitely occupying server resources. Every failure mode of the upstream call - non-OK HTTP status, missing response text, unparseable JSON, or timeout - is caught and routed to a deterministic fallback rather than surfacing a raw error or stack trace to the client.
+The server-side call to the Gemini API is wrapped in an `AbortController` with an 8-second timeout, preventing a slow or hung upstream request from indefinitely occupying server resources. Every failure mode of the upstream call — non-OK HTTP status, missing response text, unparseable JSON, or timeout — is caught and routed to a deterministic fallback rather than surfacing a raw error or stack trace to the client.
 
 ## 5. Output Validation (LLM Response Trust Boundary)
 
 The Gemini API's response is treated as **untrusted input**, not as a trusted internal value, even though it comes from our own configured API key:
 - The response is parsed as JSON inside a `try/catch`; any parse failure results in the fallback path being used, not a crash.
-- The `type` field returned by the model is validated against the app's closed list of six known personality type IDs (`CAT_TYPE_LIST`) before being used anywhere. An unrecognized or hallucinated type string is rejected and the fallback path is used instead - the app never renders or stores an unvalidated string as if it were a known type.
+- The `type` field returned by the model is validated against the app's closed list of six known personality type IDs (`CAT_TYPE_LIST`) before being used anywhere. An unrecognized or hallucinated type string is rejected and the fallback path is used instead — the app never renders or stores an unvalidated string as if it were a known type.
 - The `verdict` text is rendered as plain text content inside React (not via `dangerouslySetInnerHTML` or any raw HTML injection), so React's default JSX escaping applies and prevents any injected markup or script content in the model's output from being rendered as HTML.
 
 ## 6. Prompt Injection Surface (Known, Low-Impact)
@@ -44,7 +44,7 @@ User-supplied free text is included directly in the prompt sent to Gemini. In pr
 - The `type` field is validated against a closed list before use, and
 - The `verdict` field is only ever displayed as plain text, never executed or used to control app logic,
 
-the worst-case outcome of a successful prompt injection is a nonsensical or off-tone *verdict sentence* - there is no path from user input to code execution, data exfiltration, unauthorized type selection outside the six valid options, or any state-changing action. This is documented as an accepted, low-severity limitation rather than a gap, given the constrained blast radius.
+the worst-case outcome of a successful prompt injection is a nonsensical or off-tone *verdict sentence* — there is no path from user input to code execution, data exfiltration, unauthorized type selection outside the six valid options, or any state-changing action. This is documented as an accepted, low-severity limitation rather than a gap, given the constrained blast radius.
 
 ## 7. No Persistent User Data
 
@@ -56,7 +56,7 @@ The app does not currently store any personally identifiable information server-
 - Third-party libraries used (`html2canvas`, Next.js, React) are all actively maintained, widely used open-source packages installed via npm with no modifications to their source.
 - The project does not execute any user-uploaded content (e.g. the uploaded cat photo is only ever rendered as an `<img>` / canvas source, never parsed, executed, or interpreted as anything other than image bytes).
 
-## Recommended Future Hardening (Not Implemented - Out of Hackathon Scope)
+## Recommended Future Hardening (Not Implemented — Out of Hackathon Scope)
 
 Documented transparently for completeness:
 - Move rate limiting to a shared store (e.g. Redis) for a durable, cross-instance limit.
@@ -65,3 +65,18 @@ Documented transparently for completeness:
 - If accounts/persistence are added in the future, ensure photos and cat data are stored with proper access control per user.
 
 ---
+
+## Aikido Security Scan Results
+
+A scan was run via Aikido Security and is included in this submission as `aikido-security-report.pdf`.
+
+**Overall risk score:** 61 (Medium)
+
+**Findings:**
+- **`postcss` (CVE-2026-41305)** — a dependency-level XSS vulnerability affecting `postcss` versions prior to 8.5.10, related to unescaped backtick sequences when re-stringifying CSS ASTs. This dependency is pulled in transitively via the build toolchain (Tailwind/Next.js), not used directly in application code.
+  - **Assessment:** Aikido's own analysis confirms this dependency is **not used in production** — it's part of the build-time CSS pipeline, not runtime code, so the described XSS path (parsing untrusted, user-submitted CSS) does not apply to this app; MeowBTI never parses or re-stringifies user-supplied CSS at any point.
+  - **Status:** Reviewed and marked as ignored/accepted, given the above. Recommended remediation (`postcss` 8.4.31 → 8.5.10) can still be applied as a precaution and is a drop-in, non-breaking upgrade.
+
+No other issues were surfaced by the scan.
+
+**Follow-up note:** after upgrading the project's direct `postcss` dependency to 8.5.10 to resolve the flagged CVE, a separate `npm audit` surfaced the same underlying advisory (GHSA-qx2v-qp2m-jg93) via a second, independent copy of `postcss` bundled internally within `next` itself (`node_modules/next/node_modules/postcss`). This is maintained by the Next.js project, not by this codebase, and is not something a direct dependency upgrade in this project can resolve. `npm audit fix --force` offered to resolve it by downgrading `next` to a legacy `9.x` release — an unrelated major-version downgrade that would break the application, so this was intentionally not applied. The same reasoning as above applies: this is a build-tooling-internal dependency, not a code path that processes user-submitted CSS at runtime, so the practical risk to this deployed application is assessed as negligible. This will be resolved naturally by a future Next.js release that bundles the patched `postcss` version.
